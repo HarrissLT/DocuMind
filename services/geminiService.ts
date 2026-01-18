@@ -24,7 +24,6 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
 // --- EXTRACTORS ---
 
 // 1. Extract Text from PowerPoint (.pptx)
-// PPTX is basically a ZIP of XMLs. We read 'ppt/slides/slideX.xml' and extract text content.
 const extractTextFromPPTX = async (file: File): Promise<string> => {
   try {
     const zip = await JSZip.loadAsync(file);
@@ -69,7 +68,6 @@ const extractTextFromXLSX = async (file: File): Promise<string> => {
 
     workbook.SheetNames.forEach(sheetName => {
       const sheet = workbook.Sheets[sheetName];
-      // Convert sheet to CSV format for easy reading by AI
       const csv = XLSX.utils.sheet_to_csv(sheet);
       fullText += `--- SHEET: ${sheetName} ---\n${csv}\n\n`;
     });
@@ -82,7 +80,6 @@ const extractTextFromXLSX = async (file: File): Promise<string> => {
 };
 
 // 3. Extract Text from ZIP (Folder Simulation)
-// Reads structure and content of common text/code files inside the zip
 const extractTextFromZip = async (file: File): Promise<string> => {
   try {
     const zip = await JSZip.loadAsync(file);
@@ -91,23 +88,19 @@ const extractTextFromZip = async (file: File): Promise<string> => {
     const fileList: string[] = [];
     let contentText = "\n\nNỘI DUNG CÁC FILE QUAN TRỌNG:\n";
 
-    // Limit content reading to avoid token overflow
     let readCount = 0;
-    const MAX_READ_FILES = 10; 
+    const MAX_READ_FILES = 15; // Increased limit slightly
 
     for (const [relativePath, zipEntry] of Object.entries(zip.files)) {
       fileList.push(relativePath);
       
-      // Attempt to read content if it looks like a document or code
-      // Cast to any to handle potential type inference issues with JSZip
       const entry = zipEntry as any;
 
       if (!entry.dir && readCount < MAX_READ_FILES) {
         const ext = relativePath.split('.').pop()?.toLowerCase();
-        if (['txt', 'md', 'json', 'js', 'ts', 'html', 'css', 'py', 'java', 'xml'].includes(ext || '')) {
+        if (['txt', 'md', 'json', 'js', 'ts', 'html', 'css', 'py', 'java', 'xml', 'c', 'cpp', 'h'].includes(ext || '')) {
            const content = await entry.async("string");
-           // Truncate huge files
-           const truncatedContent = content.length > 2000 ? content.substring(0, 2000) + "...(đã cắt)" : content;
+           const truncatedContent = content.length > 3000 ? content.substring(0, 3000) + "...(đã cắt)" : content;
            contentText += `--- FILE: ${relativePath} ---\n${truncatedContent}\n\n`;
            readCount++;
         }
@@ -122,53 +115,58 @@ const extractTextFromZip = async (file: File): Promise<string> => {
 };
 
 export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
-  // Initialize AI client lazily inside the function to prevent app crash on load if API key is missing
-  if (!process.env.API_KEY) {
-    throw new Error("API Key is missing. Please configure your API_KEY in the environment variables.");
-  }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const modelId = "gemini-3-pro-preview"; 
   
   const systemInstruction = `
-    Bạn là Chủ tịch Hội đồng Thẩm định Chất lượng Tài liệu Cấp cao (Senior Document Auditor). 
-    Nhiệm vụ của bạn là thực hiện quy trình "Kiểm duyệt nghiêm ngặt" (Strict Audit) đối với tài liệu được cung cấp.
-    
-    Tư duy đánh giá của bạn phải dựa trên các trụ cột sau:
-    1. XÁC ĐỊNH MÔN HỌC/LĨNH VỰC (Contextual Awareness):
-       - Trước tiên, hãy xác định chính xác tài liệu thuộc môn học hoặc lĩnh vực nào (Ví dụ: Toán học, Vật lý, Lịch sử, Ngữ văn, CNTT, Kinh tế, Y học, v.v.).
-       - Áp dụng tiêu chuẩn đánh giá đặc thù của môn đó. Ví dụ: Toán cần chính xác tuyệt đối về công thức; Văn cần cảm xúc và ngôn từ phong phú; Lịch sử cần chính xác mốc thời gian.
+    Bạn là một CHUYÊN GIA KIỂM DUYỆT TÀI LIỆU (Document Auditor) cấp cao với 20 năm kinh nghiệm.
+    Nhiệm vụ: Thẩm định chất lượng tài liệu giáo dục/chuyên môn một cách KHẮT KHE, CHÍNH XÁC và CÔNG TÂM.
 
-    2. TÍNH CHÍNH XÁC & LOGIC (Critical Thinking): Thông tin có được kiểm chứng không? Lập luận có bị ngụy biện (fallacies) không? Cấu trúc bài viết có chặt chẽ hay rời rạc?
-    3. NGÔN NGỮ & VĂN PHONG (Academic Standards): Kiểm tra lỗi chính tả, ngữ pháp, dùng từ sáo rỗng (fluff words), văn phong có phù hợp với tính chất tài liệu không.
-    4. THẨM MỸ & TRÌNH BÀY (Visual & Formatting): Sự nhất quán về font chữ, căn lề, heading, khoảng cách đoạn, chất lượng hình ảnh minh họa.
-    5. TÍNH NGUYÊN BẢN & TRÍCH DẪN (Academic Integrity - Critical):
-       - Kiểm tra chặt chẽ quy cách trích dẫn (APA, MLA, Harvard, v.v.) xem có nhất quán không.
-       - Đánh giá độ uy tín và tính cập nhật của các nguồn tài liệu tham khảo (nếu có).
+    QUY TRÌNH PHÂN TÍCH 5 BƯỚC:
 
-    LƯU Ý ĐẶC BIỆT VỚI CÁC ĐỊNH DẠNG KHÁC NHAU:
-    - Nếu là Excel: Kiểm tra tính logic của số liệu, công thức, cách trình bày bảng biểu, tiêu đề cột.
-    - Nếu là PowerPoint: Kiểm tra lượng chữ trên slide (không quá nhiều), bố cục, tính trực quan.
-    - Nếu là Zip/Folder Project: Đánh giá cấu trúc thư mục có khoa học không, cách đặt tên file, sự đầy đủ của tài liệu.
+    1. NHẬN DIỆN MÔN HỌC (Subject Identification):
+       - Xác định chính xác môn học (Toán, Lý, Hóa, Văn, Anh, Sử, Địa, GDCD, Tin học, v.v.).
+       - Xác định trình độ (Tiểu học, THCS, THPT, Đại học).
+       - *Lưu ý*: Nếu tài liệu là đề thi, giáo án, hay bài giảng, hãy áp dụng tiêu chuẩn sư phạm tương ứng.
 
-    HƯỚNG DẪN CHẤM ĐIỂM (CỰC KỲ KHẮT KHE):
-    - < 50 điểm: Tài liệu kém, nhiều lỗi sai cơ bản, hoặc vi phạm nghiêm trọng liêm chính học thuật.
-    - 50 - 69 điểm: Trung bình, nội dung sơ sài hoặc trình bày cẩu thả. Cần sửa chữa lớn.
-    - 70 - 84 điểm: Khá/Tốt. Đạt chuẩn nhưng còn lỗi nhỏ hoặc thiếu chiều sâu.
-    - 85 - 94 điểm: Rất tốt. Chỉn chu, sâu sắc, trình bày đẹp, trích dẫn chuẩn mực.
-    - 95 - 100 điểm: Xuất sắc. Hoàn hảo về mọi mặt, có tính đột phá (Rất hiếm khi cho mức này).
+    2. KIỂM TRA TÍNH CHÍNH XÁC (Accuracy Audit):
+       - Toán/Lý/Hóa/Tin: Kiểm tra công thức, đáp số, logic giải toán, syntax code. Phát hiện lỗi sai cơ bản.
+       - Văn/Sử/Địa: Kiểm tra sự thật lịch sử, kiến thức địa lý, chuẩn mực chính trị/xã hội, lỗi diễn đạt.
+       - Tiếng Anh: Kiểm tra ngữ pháp (Grammar), từ vựng (Vocabulary), cấu trúc câu.
 
-    OUTPUT YÊU CẦU (JSON):
-    - score: Số nguyên (0-100). Đừng ngại cho điểm thấp nếu tài liệu tệ.
-    - subject: Tên môn học hoặc lĩnh vực chuyên môn của tài liệu (Ví dụ: "Toán Đại Số", "Vật Lý Hạt Nhân", "Marketing", "Văn Học").
-    - overallVerdict: Đánh giá tổng quan ("Xuất Sắc", "Tốt", "Khá", "Cần Cải Thiện", "Kém").
-    - summary: Tóm tắt cô đọng, chuyên nghiệp (khoảng 60-80 từ).
-    - pros: 3-5 điểm mạnh thực sự nổi bật (nếu có).
-    - cons: 3-5 lỗi cụ thể cần sửa.
-    - contentFeedback: Phân tích sâu về nội dung chuyên môn của môn học đó. Chỉ ra các lỗ hổng kiến thức, lập luận yếu, hoặc văn phong lủng củng.
-    - designFeedback: Phân tích kỹ về bố cục. Soi kỹ các lỗi căn chỉnh, độ phân giải ảnh, màu sắc, font chữ.
+    3. ĐÁNH GIÁ SƯ PHẠM (Pedagogical Evaluation):
+       - Nội dung có phù hợp với trình độ không?
+       - Cách diễn giải có dễ hiểu, gãy gọn không?
+       - Có tính gợi mở tư duy cho người học không?
+
+    4. HÌNH THỨC & TRÌNH BÀY (Format & Design):
+       - Lỗi typo, căn lề, font chữ, chất lượng hình ảnh minh họa.
+       - Bố cục có thoáng, dễ nhìn không?
+
+    5. LIÊM CHÍNH HỌC THUẬT (Academic Integrity):
+       - Kiểm tra trích dẫn nguồn (nếu có).
+       - Phát hiện dấu hiệu sao chép sơ sài.
+
+    HỆ THỐNG CHẤM ĐIỂM (Scoring Rubric):
+    - 0-49 (Kém): Sai kiến thức cơ bản, trình bày cẩu thả. Không thể sử dụng.
+    - 50-69 (Cần Cải Thiện): Đúng kiến thức nhưng diễn đạt lủng củng, trình bày xấu. Cần sửa nhiều.
+    - 70-84 (Khá/Tốt): Đạt chuẩn, còn vài lỗi nhỏ (typo, formatting). Dùng được ngay.
+    - 85-94 (Rất Tốt): Kiến thức chuẩn xác, trình bày đẹp, sư phạm tốt.
+    - 95-100 (Xuất Sắc): Hoàn hảo, sáng tạo, truyền cảm hứng.
+
+    OUTPUT JSON FORMAT:
+    {
+      "score": number (0-100),
+      "subject": string (Ví dụ: "Toán học - Lớp 12", "Ngữ Văn - THPT"),
+      "overallVerdict": "Xuất Sắc" | "Tốt" | "Khá" | "Cần Cải Thiện" | "Kém",
+      "summary": string (Tóm tắt 60-80 từ về nội dung và chất lượng),
+      "pros": string[] (3-5 điểm mạnh),
+      "cons": string[] (3-5 điểm yếu cụ thể),
+      "contentFeedback": string (Nhận xét chi tiết về kiến thức chuyên môn),
+      "designFeedback": string (Nhận xét chi tiết về trình bày)
+    }
   `;
 
-  // Define schema strictly
+  // Define schema
   const schema = {
     type: Type.OBJECT,
     properties: {
@@ -185,39 +183,43 @@ export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
   };
 
   try {
+    // 1. Check API Key inside try block to ensure it's caught
+    if (!process.env.API_KEY) {
+       throw new Error("Chưa cấu hình API Key. Vui lòng kiểm tra file .env hoặc biến môi trường.");
+    }
+
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    // 2. Prepare content
     let contentPart;
     const fileExt = file.name.split('.').pop()?.toLowerCase();
 
     if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      // DOCX
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
       contentPart = { text: result.value };
     } else if (fileExt === 'pptx' || file.type.includes('presentation')) {
-      // PPTX
       const text = await extractTextFromPPTX(file);
       contentPart = { text: text };
     } else if (fileExt === 'xlsx' || fileExt === 'xls' || file.type.includes('spreadsheet')) {
-      // Excel
       const text = await extractTextFromXLSX(file);
       contentPart = { text: text };
     } else if (fileExt === 'zip' || file.type.includes('zip') || file.type.includes('compressed')) {
-      // ZIP
       const text = await extractTextFromZip(file);
       contentPart = { text: text };
     } else if (file.type === 'application/pdf' || file.type.startsWith('image/')) {
-      // PDF & Images
       contentPart = await fileToGenerativePart(file);
     } else {
       throw new Error(`Định dạng file không được hỗ trợ: ${file.type}.`);
     }
 
+    // 3. Call AI
     const result = await ai.models.generateContent({
       model: modelId,
       contents: {
         parts: [
           contentPart,
-          { text: "Tiến hành thẩm định chi tiết tài liệu này theo tiêu chuẩn khắt khe nhất." }
+          { text: "Hãy phân tích và thẩm định tài liệu này theo vai trò Chuyên gia Kiểm duyệt." }
         ]
       },
       config: {
@@ -228,12 +230,13 @@ export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
     });
 
     const text = result.text;
-    if (!text) throw new Error("No response from AI");
+    if (!text) throw new Error("AI không trả về kết quả.");
     
     return JSON.parse(text);
 
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
+    // Re-throw to let UI handle it
     throw error;
   }
 };
