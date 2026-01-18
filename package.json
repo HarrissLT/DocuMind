@@ -11,8 +11,8 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@google/genai": "^0.1.1",
-    "lucide-react": "^0.263.1",
+    "@google/genai": "^0.0.2",
+    "lucide-react": "^0.400.0",
     "jspdf": "^2.5.1",
     "jspdf-autotable": "^3.5.31",
     "mammoth": "^1.6.0",
@@ -26,6 +26,6 @@
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^4.0.3",
     "typescript": "^5.0.2",
-    "vite": "^4.4.5"
+    "vite": "^5.0.0"
   }
 }
