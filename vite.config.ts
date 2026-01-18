@@ -10,9 +10,10 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Shim process.env for the existing code to work without refactoring
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
-      'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL),
-      'process.env.SUPABASE_KEY': JSON.stringify(env.SUPABASE_KEY),
+      // Fallback to empty string to prevent "undefined" errors in SDK constructors
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
+      'process.env.SUPABASE_URL': JSON.stringify(env.SUPABASE_URL || ''),
+      'process.env.SUPABASE_KEY': JSON.stringify(env.SUPABASE_KEY || ''),
     },
     build: {
       outDir: 'dist',

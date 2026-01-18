@@ -128,7 +128,7 @@ const createPDFDoc = async (
     body: [
       [
         { 
-          content: `Tên tài liệu: ${fileName}\nNgười kiểm duyệt: ${userProfile.name}\nChức danh: ${userProfile.title}`,
+          content: `Tên tài liệu: ${fileName}\nMôn/Lĩnh vực: ${analysis.subject}\nNgười kiểm duyệt: ${userProfile.name}\nChức danh: ${userProfile.title}`,
           styles: { halign: 'left', valign: 'middle' } 
         },
         { 

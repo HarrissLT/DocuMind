@@ -3,8 +3,6 @@ import * as mammoth from "mammoth";
 import JSZip from "jszip";
 import * as XLSX from "xlsx";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 // Helper to convert file to Base64
 export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } }> => {
   return new Promise((resolve, reject) => {
@@ -124,6 +122,11 @@ const extractTextFromZip = async (file: File): Promise<string> => {
 };
 
 export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
+  // Initialize AI client lazily inside the function to prevent app crash on load if API key is missing
+  if (!process.env.API_KEY) {
+    throw new Error("API Key is missing. Please configure your API_KEY in the environment variables.");
+  }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const modelId = "gemini-3-pro-preview"; 
   
   const systemInstruction = `
@@ -131,14 +134,16 @@ export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
     Nhiệm vụ của bạn là thực hiện quy trình "Kiểm duyệt nghiêm ngặt" (Strict Audit) đối với tài liệu được cung cấp.
     
     Tư duy đánh giá của bạn phải dựa trên các trụ cột sau:
-    1. TÍNH CHÍNH XÁC & LOGIC (Critical Thinking): Thông tin có được kiểm chứng không? Lập luận có bị ngụy biện (fallacies) không? Cấu trúc bài viết có chặt chẽ hay rời rạc?
-    2. NGÔN NGỮ & VĂN PHONG (Academic Standards): Kiểm tra lỗi chính tả, ngữ pháp, dùng từ sáo rỗng (fluff words), văn phong có phù hợp với tính chất tài liệu không.
-    3. THẨM MỸ & TRÌNH BÀY (Visual & Formatting): Sự nhất quán về font chữ, căn lề, heading, khoảng cách đoạn, chất lượng hình ảnh minh họa.
-    4. TÍNH NGUYÊN BẢN & TRÍCH DẪN (Academic Integrity - Critical):
+    1. XÁC ĐỊNH MÔN HỌC/LĨNH VỰC (Contextual Awareness):
+       - Trước tiên, hãy xác định chính xác tài liệu thuộc môn học hoặc lĩnh vực nào (Ví dụ: Toán học, Vật lý, Lịch sử, Ngữ văn, CNTT, Kinh tế, Y học, v.v.).
+       - Áp dụng tiêu chuẩn đánh giá đặc thù của môn đó. Ví dụ: Toán cần chính xác tuyệt đối về công thức; Văn cần cảm xúc và ngôn từ phong phú; Lịch sử cần chính xác mốc thời gian.
+
+    2. TÍNH CHÍNH XÁC & LOGIC (Critical Thinking): Thông tin có được kiểm chứng không? Lập luận có bị ngụy biện (fallacies) không? Cấu trúc bài viết có chặt chẽ hay rời rạc?
+    3. NGÔN NGỮ & VĂN PHONG (Academic Standards): Kiểm tra lỗi chính tả, ngữ pháp, dùng từ sáo rỗng (fluff words), văn phong có phù hợp với tính chất tài liệu không.
+    4. THẨM MỸ & TRÌNH BÀY (Visual & Formatting): Sự nhất quán về font chữ, căn lề, heading, khoảng cách đoạn, chất lượng hình ảnh minh họa.
+    5. TÍNH NGUYÊN BẢN & TRÍCH DẪN (Academic Integrity - Critical):
        - Kiểm tra chặt chẽ quy cách trích dẫn (APA, MLA, Harvard, v.v.) xem có nhất quán không.
        - Đánh giá độ uy tín và tính cập nhật của các nguồn tài liệu tham khảo (nếu có).
-       - Phát hiện các dấu hiệu của việc "xào bài", đạo văn hoặc bịa đặt số liệu/nguồn (Hallucinated Citations).
-       - Đối với tài liệu nghiên cứu/khoa học, việc thiếu trích dẫn hoặc trích dẫn sai là lỗi cực kỳ nghiêm trọng.
 
     LƯU Ý ĐẶC BIỆT VỚI CÁC ĐỊNH DẠNG KHÁC NHAU:
     - Nếu là Excel: Kiểm tra tính logic của số liệu, công thức, cách trình bày bảng biểu, tiêu đề cột.
@@ -146,7 +151,7 @@ export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
     - Nếu là Zip/Folder Project: Đánh giá cấu trúc thư mục có khoa học không, cách đặt tên file, sự đầy đủ của tài liệu.
 
     HƯỚNG DẪN CHẤM ĐIỂM (CỰC KỲ KHẮT KHE):
-    - < 50 điểm: Tài liệu kém, nhiều lỗi sai cơ bản, hoặc vi phạm nghiêm trọng liêm chính học thuật (đạo văn, thiếu nguồn).
+    - < 50 điểm: Tài liệu kém, nhiều lỗi sai cơ bản, hoặc vi phạm nghiêm trọng liêm chính học thuật.
     - 50 - 69 điểm: Trung bình, nội dung sơ sài hoặc trình bày cẩu thả. Cần sửa chữa lớn.
     - 70 - 84 điểm: Khá/Tốt. Đạt chuẩn nhưng còn lỗi nhỏ hoặc thiếu chiều sâu.
     - 85 - 94 điểm: Rất tốt. Chỉn chu, sâu sắc, trình bày đẹp, trích dẫn chuẩn mực.
@@ -154,11 +159,12 @@ export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
 
     OUTPUT YÊU CẦU (JSON):
     - score: Số nguyên (0-100). Đừng ngại cho điểm thấp nếu tài liệu tệ.
+    - subject: Tên môn học hoặc lĩnh vực chuyên môn của tài liệu (Ví dụ: "Toán Đại Số", "Vật Lý Hạt Nhân", "Marketing", "Văn Học").
     - overallVerdict: Đánh giá tổng quan ("Xuất Sắc", "Tốt", "Khá", "Cần Cải Thiện", "Kém").
     - summary: Tóm tắt cô đọng, chuyên nghiệp (khoảng 60-80 từ).
     - pros: 3-5 điểm mạnh thực sự nổi bật (nếu có).
     - cons: 3-5 lỗi cụ thể cần sửa.
-    - contentFeedback: Phân tích sâu về nội dung. Chỉ ra các lỗ hổng kiến thức, lập luận yếu, hoặc văn phong lủng củng. Phải đề cập đến vấn đề trích dẫn/nguồn nếu có lỗi.
+    - contentFeedback: Phân tích sâu về nội dung chuyên môn của môn học đó. Chỉ ra các lỗ hổng kiến thức, lập luận yếu, hoặc văn phong lủng củng.
     - designFeedback: Phân tích kỹ về bố cục. Soi kỹ các lỗi căn chỉnh, độ phân giải ảnh, màu sắc, font chữ.
   `;
 
@@ -167,6 +173,7 @@ export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
     type: Type.OBJECT,
     properties: {
       score: { type: Type.INTEGER },
+      subject: { type: Type.STRING },
       overallVerdict: { type: Type.STRING, enum: ["Xuất Sắc", "Tốt", "Khá", "Cần Cải Thiện", "Kém"] },
       summary: { type: Type.STRING },
       pros: { type: Type.ARRAY, items: { type: Type.STRING } },
@@ -174,7 +181,7 @@ export const analyzeDocumentWithGemini = async (file: File): Promise<any> => {
       contentFeedback: { type: Type.STRING },
       designFeedback: { type: Type.STRING },
     },
-    required: ["score", "overallVerdict", "summary", "pros", "cons", "contentFeedback", "designFeedback"],
+    required: ["score", "subject", "overallVerdict", "summary", "pros", "cons", "contentFeedback", "designFeedback"],
   };
 
   try {

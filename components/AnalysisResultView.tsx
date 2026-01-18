@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AnalysisResult, FileData, UserProfile } from '../types';
-import { Check, X, Download, RotateCcw, FileText, Share2, Award, Zap, AlertCircle, Eye, Loader2 } from 'lucide-react';
+import { Check, X, Download, RotateCcw, FileText, Share2, Award, Zap, AlertCircle, Eye, Loader2, BookOpen } from 'lucide-react';
 import { generatePDFReport, getPDFBlobUrl } from '../services/pdfService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -132,7 +132,13 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({ result, 
                <Award className="text-blue-600" /> 
                Kết Quả Kiểm Duyệt
            </h2>
-           <p className="text-gray-500 text-sm mt-1">File: {fileData.file.name}</p>
+           <div className="flex flex-col gap-1 mt-1">
+               <p className="text-gray-500 text-sm">File: {fileData.file.name}</p>
+               <div className="flex items-center gap-2 text-sm text-purple-600 font-semibold bg-purple-50 px-2 py-0.5 rounded-md w-fit">
+                  <BookOpen size={14} />
+                  <span>Môn/Lĩnh vực: {result.subject}</span>
+               </div>
+           </div>
         </div>
         <div className="flex gap-3">
           <button 
@@ -261,7 +267,7 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({ result, 
           </div>
           <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-10">
               <div>
-                  <h4 className="font-bold text-gray-800 mb-2 border-b pb-2">Về Nội Dung</h4>
+                  <h4 className="font-bold text-gray-800 mb-2 border-b pb-2">Về Nội Dung ({result.subject})</h4>
                   <p className="text-gray-600 text-sm leading-7 text-justify whitespace-pre-line">
                       {result.contentFeedback}
                   </p>

@@ -9,6 +9,7 @@ export interface UserProfile {
 
 export interface AnalysisResult {
   score: number;
+  subject: string; // Môn học/Lĩnh vực chuyên môn
   summary: string;
   pros: string[];
   cons: string[];
